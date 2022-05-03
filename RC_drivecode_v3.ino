@@ -6,33 +6,40 @@
  * Version: 3.0
  */
 
+/*
+ * Known bugs:
+ * Controller lost connection is not registered
+ */
+
 // Compile Options
 #define SERIAL_ON true
 
 // Libraries
 #include "CytronMotorDriver.h"
 
-// RC Pins
-//#define CH5 7   //switch a
-//#define CH6 12  //switch c (3-position)
-//#define CH7 13  //switch f
-//#define CH8 9   //switch h (springy)
+// RC Pins - switches are re-assignable in controller menus
+#define CH5_PIN A0  //switch b
+#define CH6_PIN A1  //switch f
+#define CH7_PIN A2  //switch g (3-position)
+#define CH8_PIN A3  //switch h (springy)
 
 // Radio Ctrl and Motor Ctrl Power
-#define RC_PWR_PIN A1
+/*#define RC_PWR_PIN A1
 #define RC_GND_PIN A0
 #define MC_PWR_PIN 13
-#define MC_GND_PIN 12
+#define MC_GND_PIN 12*/
 
 // joystick constants
 #define RY_PIN   2 // ch2
-#define RY_UP    2047
-#define RY_DOWN  1024
+#define RY_OFFSET -48
+#define RY_UP    2047 + RY_OFFSET
+#define RY_DOWN  1024 + RY_OFFSET
 #define RY_IDLE  ((RY_UP + RY_DOWN)/2)
 
 #define RX_PIN   8 // ch1
-#define RX_RIGHT 2047
-#define RX_LEFT  1024
+#define RX_OFFSET -48
+#define RX_RIGHT 2047 + RX_OFFSET
+#define RX_LEFT  1024 + RX_OFFSET
 #define RX_IDLE  ((RX_LEFT + RX_RIGHT)/2)
 
 #define LY_PIN   3 // ch4
@@ -45,11 +52,13 @@
 #define LX_LEFT  1024
 #define LX_IDLE  ((LX_LEFT + LX_RIGHT)/2)
 
-#define MIN_ACCEL 10  // never 0 else no motion when LY down all the way
-#define MAX_ACCEL 200 
+#define MIN_ACCEL 1  // never 0 else no motion when LY down all the way
+#define MAX_ACCEL 20 
+#define SPEED_MULTIPLIER 2
+#define TURN_MULTIPLIER 0.5
 
 // variables
-int lx, ly, rx, ry, accel;
+int lx, ly, rx, ry, ch5, ch6, ch7, ch8, accel;
 int left_motor_setpoint, right_motor_setpoint;
 int left_motor_value,    right_motor_value;
 
@@ -62,10 +71,10 @@ void setup() {
   if (SERIAL_ON) Serial.begin(115200);
 
   // RC and Motor Controller Power
-  pinMode(RC_PWR_PIN, OUTPUT); digitalWrite(RC_PWR_PIN, HIGH); // Vcc
+  /*pinMode(RC_PWR_PIN, OUTPUT); digitalWrite(RC_PWR_PIN, HIGH); // Vcc
   pinMode(RC_GND_PIN, OUTPUT); digitalWrite(RC_GND_PIN, LOW);  // Gnd
   pinMode(MC_PWR_PIN, OUTPUT); digitalWrite(MC_PWR_PIN, HIGH); // Vcc
-  pinMode(MC_GND_PIN, OUTPUT); digitalWrite(MC_GND_PIN, LOW);  // Gnd
+  pinMode(MC_GND_PIN, OUTPUT); digitalWrite(MC_GND_PIN, LOW);  // Gnd*/
 
   // RC Channels
   pinMode(RY_PIN, INPUT); pinMode(RX_PIN, INPUT);
@@ -75,7 +84,7 @@ void setup() {
 void loop() {
   bool RC_connection = get_RC_values();
 
-  if (RC_connection) {
+  if (RC_connection & ch6) {
     // connection is good
     update_joystick_to_tank_setpoints();
   } else {
@@ -110,6 +119,29 @@ bool get_RC_values(void) {
   ly = pulseIn(LY_PIN, HIGH, timeout);
   if (ly == 0) RC_connection = false;
 
+  // CH5 - switch b
+  ch5 = (pulseIn(CH5_PIN, HIGH, timeout) < 1152);
+
+  // CH6 - switch f
+  ch6 = (pulseIn(CH6_PIN, HIGH, timeout) < 1152);
+  if (ly == 0) RC_connection = false;
+  
+  // CH7 - switch g (3-pos)
+  ch7 = (pulseIn(CH7_PIN, HIGH, timeout)) > 1750 ? 2 : (pulseIn(CH7_PIN, HIGH, timeout) > 1152 ? 1 : 0);
+
+  // CH8 - switch h (springy)
+  ch8 = (pulseIn(CH8_PIN, HIGH, timeout) < 1152);
+
+  // CH9 - not implemented
+  //ch9 = (pulseIn(LY_PIN, HIGH, CH8_pin) < 1152);
+
+  Serial.print(ch5);
+  Serial.print(",");
+  Serial.print(ch6);
+  Serial.print(",");
+  Serial.print(ch7);
+  Serial.print(",");
+  Serial.println(ch8);
   // if all values != 0, then connection TRUE
   return RC_connection;
 }
@@ -118,7 +150,7 @@ bool get_RC_values(void) {
 void update_joystick_to_tank_setpoints(void) {
   
   // 1&2. scale inputs and invert X
-  int X = map(rx, RX_LEFT, RX_RIGHT, 100, -100);
+  int X = map(rx, RX_LEFT, RX_RIGHT, 100 * TURN_MULTIPLIER, -100 * TURN_MULTIPLIER);
   int Y = map(ry, RY_DOWN, RY_UP,    -100, 100);
 
   // 3. calc V = (R+L)
@@ -129,14 +161,14 @@ void update_joystick_to_tank_setpoints(void) {
 
   // 5&6. calc R & L = (V+W)/2 & (V-W)/2
   int R = (V + W) / 2;
-  int L = (V - W) / 2;
+  int L = (V - W) / -2;
 
   // results
-  left_motor_setpoint  = map(L, -100, 100, -256, 256);
-  right_motor_setpoint = map(R, -100, 100, -256, 256);
+  left_motor_setpoint  = map(L, -100, 100, -256 * SPEED_MULTIPLIER, 256 * SPEED_MULTIPLIER);
+  right_motor_setpoint = map(R, -100, 100, -256 * SPEED_MULTIPLIER, 256 * SPEED_MULTIPLIER);
 
   // get the acceleration
-  accel = map(ly, LY_DOWN, LY_UP, MIN_ACCEL, MAX_ACCEL); 
+  accel = map(ly, LY_UP, LY_DOWN, MIN_ACCEL, MAX_ACCEL); 
 
   return;
 }
