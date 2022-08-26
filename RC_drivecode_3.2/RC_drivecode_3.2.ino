@@ -3,15 +3,12 @@
  * Author:  Sidney Davis
  * Date:    8/25/2022
  * Contributor: Henry Gelber
- * Version: 3.3
- * Changelog:
- *  Add SHOWBOAT MODE
- *  Faster, more responsive steering
+ * Version: 3.2
+ */
 
 /*
  * Known bugs:
- * Speed cap value jumps from 130 to 256
- * Noticable delay in acceleration of turn speed (hopefully resolved?)
+ * Noticable delay in acceleration of turn speed
  */
 
 // Compile Options
@@ -55,24 +52,16 @@
 #define LX_LEFT  1024
 #define LX_IDLE  ((LX_LEFT + LX_RIGHT)/2)
 
-//SPEED_MIN and TURN_MULT should never be 0 otherwise no movement/turn
-#define STANDARD_SPEED_MIN 0.3  // to be used when driving in pedestrian traffic
-#define STANDARD_SPEED_MAX 1.5  
-#define SHOWBOAT_SPEED_MIN 1    // to be used when trying to impress people
-#define SHOWBOAT_SPEED_MAX 2.5
-
-#define TURN_MULT_1 0.5   // parking
-#define TURN_MULT_2 0.75  // driving
-#define TURN_MULT_3 1.25  // showing off
-
-#define DRIVE_ACCEL 20 
-#define TURN_ACCEL 50
-#define SHOWBOAT_MULTIPLIER 1.75
+#define SPEED_MIN 0.2  // never 0 else no motion when LY down all the way
+#define STANDARD_SPEED_MAX 2
+#define SHOWBOAT_SPEED_MAX 2
+#define TURN_MULT_1 0.5  // never 0 else no motion when LY down all the way
+#define TURN_MULT_2 0.75
+#define TURN_MULT_3 1.25
+#define MAX_ACCEL 20
 
 // variables
-int lx, ly, rx, ry, ch5, ch6, ch7, ch8;
-int drive_accel,         turn_accel, accel_mult;
-int speed_setpoint,      turn_setpoint;
+int lx, ly, rx, ry, ch5, ch6, ch7, ch8, accel;
 int left_motor_setpoint, right_motor_setpoint;
 int left_motor_value,    right_motor_value;
 float speed_multiplier;
@@ -106,7 +95,7 @@ void loop() {
   } else {
     // connection is bad. stop motors
     if (SERIAL_ON) Serial.println("RC CONNECTION LOST!!!");
-    drive_accel = DRIVE_ACCEL * SHOWBOAT_MULTIPLIER;
+    accel = MAX_ACCEL * 2.5;
     left_motor_setpoint = 0;
     right_motor_setpoint = 0;
   }
@@ -151,7 +140,7 @@ bool get_RC_values(void) {
 
   // CH9 - not implemented
   //ch9 = (pulseIn(LY_PIN, HIGH, CH8_pin) < 1152);
-  /*
+  
   Serial.print(ch5);
   Serial.print(",");
   Serial.print(ch6);
@@ -159,53 +148,28 @@ bool get_RC_values(void) {
   Serial.print(ch7);
   Serial.print(",");
   Serial.println(ch8);
-  */
   // if all values != 0, then connection TRUE
   return RC_connection;
 }
 
 // Ref: https://home.kendra.com/mauser/joystick.html 
 void update_joystick_to_tank_setpoints(void) {
- 
+
   // Set turn multiplier from 3-way switch
   turn_multiplier = (ch7 == 1 ? TURN_MULT_1 : ch7 == 2 ? TURN_MULT_2 : TURN_MULT_3);
   
   // 1&2. scale inputs and invert X
   int X = map(rx, RX_LEFT, RX_RIGHT, -100 * turn_multiplier, 100 * turn_multiplier);
   int Y = map(ry, RY_DOWN, RY_UP,    -100, 100);
-  
+
   //set speed multiplier from left y
-  if(ch5 == 1) {
-     Y = map(ly, LY_UP, LY_DOWN, SHOWBOAT_SPEED_MIN * Y, SHOWBOAT_SPEED_MAX * Y);
-     accel_mult = SHOWBOAT_MULTIPLIER;
-     Serial.println("SHOWBOAT MODE ENABLED");
-  } else {
-    Y = map(ly, LY_UP, LY_DOWN, STANDARD_SPEED_MIN * Y, STANDARD_SPEED_MAX * Y);
-    accel_mult = 1;
-  }
-
-  Serial.println(drive_accel);
-  Serial.println(turn_accel);
-
-  if (speed_setpoint < Y) {
-    speed_setpoint = min(speed_setpoint + (DRIVE_ACCEL * SHOWBOAT_MULTIPLIER), Y);
-  } else
-  if (speed_setpoint > Y) {
-    speed_setpoint = max(speed_setpoint - (DRIVE_ACCEL * SHOWBOAT_MULTIPLIER), Y);
-  }
-
-  if (turn_setpoint < X) {
-    turn_setpoint = min(turn_setpoint + (TURN_ACCEL * SHOWBOAT_MULTIPLIER), X);
-  } else
-  if (turn_setpoint > X) {
-    turn_setpoint = max(turn_setpoint - (TURN_ACCEL * SHOWBOAT_MULTIPLIER), X);
-  }
+  Y = map(ly, LY_UP, LY_DOWN, SPEED_MIN * Y, STANDARD_SPEED_MAX * Y);
   
   // 3. calc V = (R+L)
-  int V = (100 - abs(turn_setpoint)) * (speed_setpoint/100) + speed_setpoint;
+  int V = (100 - abs(X)) * (Y/100) + Y;
 
   // 4. calc W = (R-L)
-  int W = (100 - abs(speed_setpoint)) * (turn_setpoint/100) + turn_setpoint;
+  int W = (100 - abs(Y)) * (X/100) + X;
 
   // 5&6. calc R & L = (V+W)/2 & (V-W)/2
   int R = (V + W) / 2;
@@ -215,6 +179,9 @@ void update_joystick_to_tank_setpoints(void) {
   left_motor_setpoint  = map(L, -100, 100, -256, 256);
   right_motor_setpoint = map(R, -100, 100, -256, 256);
 
+  // get the acceleration
+  accel = MAX_ACCEL;
+
   return;
 }
 
@@ -222,8 +189,21 @@ void update_joystick_to_tank_setpoints(void) {
 void update_motor_values(void) {
 
   // change left motor values based on setpoints and accel
-    left_motor_value = left_motor_setpoint;
-    right_motor_value = right_motor_setpoint;
+  if (left_motor_value < left_motor_setpoint) {
+    left_motor_value = min(left_motor_value + accel, left_motor_setpoint);
+  } else 
+  if (left_motor_value > left_motor_setpoint) {
+    left_motor_value = max(left_motor_value - accel, left_motor_setpoint);
+  }
+
+  // change right motor values based on setpoints and accel
+  if (right_motor_value < right_motor_setpoint) {
+    right_motor_value = min(right_motor_value + accel, right_motor_setpoint);
+  } else 
+  if (right_motor_value > right_motor_setpoint) {
+    right_motor_value = max(right_motor_value - accel, right_motor_setpoint);
+  } 
+
   return;
 }
 
@@ -235,12 +215,11 @@ void print_function(void) {
   Serial.print("Left X Joy: "); Serial.println(lx);
 
   // setpoints
-  Serial.print("\nDrive Setpoint: "); Serial.println(speed_setpoint);
-  Serial.print("Turn Setpoint: "); Serial.println(turn_setpoint);
   Serial.print("\nLeft Motor Setpoint: "); Serial.println(left_motor_setpoint);
   Serial.print("Right Motor Setpoint: "); Serial.println(right_motor_setpoint);
 
   // values
+  Serial.print("Turn Multiplier: "); Serial.println(turn_multiplier); 
   Serial.print("Left Motor Value: "); Serial.println(left_motor_value);
   Serial.print("Right Motor Value: "); Serial.println(right_motor_value);
 
