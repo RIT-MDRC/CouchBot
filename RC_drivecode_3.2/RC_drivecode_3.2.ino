@@ -10,7 +10,8 @@
 
 /*
  * Known bugs:
- * Noticable delay in acceleration of turn speed (hopefully resolved?
+ * Speed cap value jumps from 130 to 256
+ * Noticable delay in acceleration of turn speed (hopefully resolved?)
  */
 
 // Compile Options
