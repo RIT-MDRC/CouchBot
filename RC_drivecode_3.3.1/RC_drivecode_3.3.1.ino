@@ -3,15 +3,14 @@
  * Author:  Sidney Davis
  * Date:    8/25/2022
  * Contributor: Henry Gelber
- * Version: 3.3
+ * Version: 3.3.1
  * Changelog:
  *  Add SHOWBOAT MODE
  *  Faster, more responsive steering
 
 /*
  * Known bugs:
- * Speed cap value jumps from 130 to 256
- * Noticable delay in acceleration of turn speed (hopefully resolved?)
+ * Turn speed sluggish on showboat mode
  */
 
 // Compile Options
