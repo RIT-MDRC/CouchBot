@@ -5,12 +5,12 @@
  * Contributor: Henry Gelber
  * Version: 3.3.1
  * Changelog:
- *  Add SHOWBOAT MODE
- *  Faster, more responsive steering
+ *  Updated pins
+ *  Exponential speed control
 
 /*
  * Known bugs:
- * Turn speed sluggish on showboat mode
+ * Max speed steering issues
  */
 
 // Compile Options
@@ -18,12 +18,12 @@
 
 // Libraries
 #include "CytronMotorDriver.h"
-
+  
 // RC Pins - switches are re-assignable in controller menus
-#define CH5_PIN A0  //switch b
-#define CH6_PIN A1  //switch f
-#define CH7_PIN A2  //switch g (3-position)
-#define CH8_PIN A3  //switch h (springy)
+#define CH5_PIN A4  //switch b
+#define CH6_PIN A5  //switch g (3-position)
+//#define CH7_PIN A2  //switch f (to be used for siren)
+//#define CH8_PIN A3  //switch h (springy) (to be used for horn)
 
 // Radio Ctrl and Motor Ctrl Power
 /*#define RC_PWR_PIN A1
@@ -32,33 +32,33 @@
 #define MC_GND_PIN 12*/
 
 // joystick constants
-#define RY_PIN   2 // ch2
+#define RY_PIN   A1 // ch2
 #define RY_OFFSET -48
 #define RY_UP    2047 + RY_OFFSET
 #define RY_DOWN  1024 + RY_OFFSET
 #define RY_IDLE  ((RY_UP + RY_DOWN)/2)
 
-#define RX_PIN   8 // ch1
+#define RX_PIN   A0 // ch1
 #define RX_OFFSET -48
 #define RX_RIGHT 2047 + RX_OFFSET
 #define RX_LEFT  1024 + RX_OFFSET
 #define RX_IDLE  ((RX_LEFT + RX_RIGHT)/2)
 
-#define LY_PIN   3 // ch4
+#define LY_PIN   A2 // ch4
 #define LY_UP    2047
 #define LY_DOWN  1024
 #define LY_IDLE  LY_DOWN
 
-#define LX_PIN   4 // ch3
+#define LX_PIN   A3 // ch3
 #define LX_RIGHT 2047
 #define LX_LEFT  1024
 #define LX_IDLE  ((LX_LEFT + LX_RIGHT)/2)
 
+
 //SPEED_MIN and TURN_MULT should never be 0 otherwise no movement/turn
-#define STANDARD_SPEED_MIN 0.3  // to be used when driving in pedestrian traffic
-#define STANDARD_SPEED_MAX 1.5  
-#define SHOWBOAT_SPEED_MIN 1.25 // to be used when trying to impress people
-#define SHOWBOAT_SPEED_MAX 3
+#define SPEED_MIN 0.6  // to be used when driving in pedestrian traffic
+#define SPEED_MAX 5
+#define SPEED_EXP 2
 
 #define TURN_MULT_1 0.5   // parking
 #define TURN_MULT_2 0.75  // driving
@@ -81,6 +81,9 @@ float turn_multiplier;
 CytronMD  leftMotor(PWM_DIR, 5, 10); // PWM = Pin 5, DIR = Pin 10.
 CytronMD rightMotor(PWM_DIR, 6, 11); // PWM = Pin 6, DIR = Pin 11.
 
+
+int countUpValue = 0;
+
 void setup() {
   // put your setup code here, to run once:
   if (SERIAL_ON) Serial.begin(115200);
@@ -97,15 +100,17 @@ void setup() {
 }
 
 void loop() {
+  countUpValue++;
   bool RC_connection = get_RC_values();
-
-  if (RC_connection & ch6) {
+  if (RC_connection & ch5) {
     // connection is good
     update_joystick_to_tank_setpoints();
   } else {
     // connection is bad. stop motors
-    if (SERIAL_ON) Serial.println("RC CONNECTION LOST!!!");
-    drive_accel = DRIVE_ACCEL * SHOWBOAT_MULTIPLIER;
+    if (SERIAL_ON) Serial.println("⚠ ⚠ ⚠ RC CONNECTION LOST ⚠ ⚠ ⚠ \n\n");
+    drive_accel = pow(SPEED_MAX, SPEED_EXP);
+    speed_setpoint = 0;
+    turn_setpoint = 0;
     left_motor_setpoint = 0;
     right_motor_setpoint = 0;
   }
@@ -134,23 +139,19 @@ bool get_RC_values(void) {
   ly = pulseIn(LY_PIN, HIGH, timeout);
   if (ly == 0) RC_connection = false;
 
-  // CH5 - switch b
+  // CH5 - switch f
   ch5 = (pulseIn(CH5_PIN, HIGH, timeout) < 1152);
 
-  // CH6 - switch f
-  ch6 = (pulseIn(CH6_PIN, HIGH, timeout) < 1152);
+  // CH6 - switch e 3pos, turn speed control
+  ch6 = (pulseIn(CH6_PIN, HIGH, timeout)) > 1750 ? 3 : (pulseIn(CH6_PIN, HIGH, timeout) > 1152 ? 2 : 1);
   if (ly == 0) RC_connection = false;
   
-  // CH7 - switch g (3-pos)
-  // Turn speed controller
-  ch7 = (pulseIn(CH7_PIN, HIGH, timeout)) > 1750 ? 3 : (pulseIn(CH7_PIN, HIGH, timeout) > 1152 ? 2 : 1);
+/*  // CH7 - switch f (3-pos)
+  ch7 = {pulseIn(CH7_PIN, HIGH, timeout) < 1152);
 
   // CH8 - switch h (springy)
-  ch8 = (pulseIn(CH8_PIN, HIGH, timeout) < 1152);
+  ch8 = (pulseIn(CH8_PIN, HIGH, timeout) < 1152); 
 
-  // CH9 - not implemented
-  //ch9 = (pulseIn(LY_PIN, HIGH, CH8_pin) < 1152);
-  /*
   Serial.print(ch5);
   Serial.print(",");
   Serial.print(ch6);
@@ -167,21 +168,32 @@ bool get_RC_values(void) {
 void update_joystick_to_tank_setpoints(void) {
  
   // Set turn multiplier from 3-way switch
-  turn_multiplier = (ch7 == 1 ? TURN_MULT_1 : ch7 == 2 ? TURN_MULT_2 : TURN_MULT_3);
+  turn_multiplier = (ch6 == 1 ? TURN_MULT_1 : ch6 == 2 ? TURN_MULT_2 : TURN_MULT_3);
   
   // 1&2. scale inputs and invert X
   int X = map(rx, RX_LEFT, RX_RIGHT, -100 * turn_multiplier, 100 * turn_multiplier);
   int Y = map(ry, RY_DOWN, RY_UP,    -100, 100);
   
   //set speed multiplier from left y
-  if(ch5 == 1) {
+
+  float LY = map(ly, LY_UP, LY_DOWN, SPEED_MIN * 16, SPEED_MAX * 16);
+  accel_mult = (LY / 32);
+  if(accel_mult < 1){
+    accel_mult = 1;
+  }
+  LY = pow(LY, SPEED_EXP) / (SPEED_MAX * 256);
+  Y = Y * LY;
+  
+
+     
+  /*if(ch5 == 1) {
      Y = map(ly, LY_UP, LY_DOWN, SHOWBOAT_SPEED_MIN * Y, SHOWBOAT_SPEED_MAX * Y);
      accel_mult = SHOWBOAT_MULTIPLIER;
      Serial.println("SHOWBOAT MODE ENABLED");
   } else {
     Y = map(ly, LY_UP, LY_DOWN, STANDARD_SPEED_MIN * Y, STANDARD_SPEED_MAX * Y);
     accel_mult = 1;
-  }
+  }*/
 
   if (speed_setpoint < Y) {
     speed_setpoint = min(speed_setpoint + (DRIVE_ACCEL * accel_mult), Y);
@@ -200,8 +212,8 @@ void update_joystick_to_tank_setpoints(void) {
   // 4. calc W = (R-L)
   int W = (500 - abs(speed_setpoint)) * (turn_setpoint/500) + turn_setpoint;
 
-  Serial.println(V);
-  Serial.println(W);
+  //Serial.println(V);
+  //Serial.println(W);
   
   // 5&6. calc R & L = (V+W)/2 & (V-W)/2
   int R = (V + W) / 2;
@@ -225,20 +237,19 @@ void update_motor_values(void) {
 
 void print_function(void) {
   // raw values
-  Serial.print("\nRight Y Joy: "); Serial.println(ry);
-  Serial.print("Right X Joy: "); Serial.println(rx);
-  Serial.print("Left Y Joy: "); Serial.println(ly);
-  Serial.print("Left X Joy: "); Serial.println(lx);
+  int pry = ry-1536;
+  int prx = rx-1536;
+  int ply = ly-1536;
+  
+  Serial.print((String)"\nRightY:" + pry * -1 + " RightXJoy:" + prx + " LeftYJoy:" + ply * -1 + " ");
+  //Serial.print((String)"\nLeft X Joy:" + lx + ", "); not used currently
 
   // setpoints
-  Serial.print("\nDrive Setpoint: "); Serial.println(speed_setpoint);
-  Serial.print("Turn Setpoint: "); Serial.println(turn_setpoint);
-  Serial.print("\nLeft Motor Setpoint: "); Serial.println(left_motor_setpoint);
-  Serial.print("Right Motor Setpoint: "); Serial.println(right_motor_setpoint);
+  Serial.print((String)"DriveSetpoint:" + speed_setpoint + " TurnSetpoint:" + turn_setpoint + " ");
+  Serial.print((String)"LeftMotorSetpoint:" + left_motor_setpoint + " RightMotorSetpoint:" + right_motor_setpoint * -1 + " ");
 
   // values
-  Serial.print("Left Motor Value: "); Serial.println(left_motor_value);
-  Serial.print("Right Motor Value: "); Serial.println(right_motor_value);
+  Serial.print((String)"LeftMotorValue:" + left_motor_value + "RightMotorValue:" + right_motor_value * -1 + "\n\n");
 
   return;
 }
