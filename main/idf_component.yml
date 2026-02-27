@@ -1,0 +1,12 @@
+## IDF Component Manager Manifest File
+dependencies:
+  ## Required IDF version
+  idf:
+    version: '>=4.1.0'
+
+  ## ESP++ Components
+  ## APIs docs: https://esp-cpp.github.io/espp
+  espp/task: '>=1.0'
+  espp/logger: '>=1.0'
+  espp/led: '>=1.0'
+  espp/interrupt: '>=1.0'
