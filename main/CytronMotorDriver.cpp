@@ -51,18 +51,20 @@ void CytronMD::setSpeed(int16_t speed)
       }
 
       // Set the speed and direction.
+      // + values = counter clockwise
+      // - values = clockwise
       switch (_mode)
       {
       case PWM_DIR:
             if (speed >= 0)
             {
                   ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, _channel, ((speed/255.0) * 4096)));
-                  gpio_set_level(_dir_pin, 0);
+                  gpio_set_level(_dir_pin, 1);
             }
             else
             {
                   ESP_ERROR_CHECK(ledc_set_duty(LEDC_LOW_SPEED_MODE, _channel, ((-speed/255.0) * 4096)));
-                  gpio_set_level(_dir_pin, 1);
+                  gpio_set_level(_dir_pin, 0);
             }
             break;
 

@@ -84,11 +84,11 @@ void update_setpoints() {
     rot = std::max<float>(rot - TURN_ACCEL, rotSetpoint);
   }
 
-  rightMotorSetpoint = -1 * ((drive * 255) - (rot * 255));
-  leftMotorSetpoint = 1 * ((drive * 255) + (rot * 255));  
+  rightMotorSetpoint = -1 * ((drive * 255) + (rot * 255));
+  leftMotorSetpoint = 1 * ((drive * 255) - (rot * 255));  
 
-  // logger.debug("failsafe: {} | ch1: {} | ch2: {} | ch3: {} | left: {} | right: {} | throttle: {} | turn_accel: {} | rot: {}",
-  //   failsafe, rc_channels[0], rc_channels[1], rc_channels[2], leftMotorSetpoint, rightMotorSetpoint, throttle, turn_accel, rotSetpoint
+  // logger.debug("failsafe: {} | ch1: {} | ch2: {} | ch3: {} | left: {} | right: {} | throttle: {} | drive: {}",
+  //   failsafe, rc_channels[0], rc_channels[1], rc_channels[2], leftMotorSetpoint, rightMotorSetpoint, throttle, drive
   // );
 }
 
