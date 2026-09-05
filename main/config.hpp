@@ -39,6 +39,8 @@
 #define AN1 GPIO_NUM_33
 #define AN2 GPIO_NUM_32
 
+// Horn GPIO
+#define HORN_PIN GPIO_NUM_12
 
 // RC Joystick ranges
 #define JOY_MAX 1695

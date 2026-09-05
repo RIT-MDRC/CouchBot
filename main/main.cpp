@@ -110,6 +110,17 @@ extern "C" void app_main(void)
   sbus_task.start();
   sbus_task.start_watchdog();
 
+  // Setup GPIO for horn :)
+  gpio_config_t io_conf = {};
+  io_conf.intr_type = GPIO_INTR_DISABLE;
+  io_conf.mode = GPIO_MODE_OUTPUT;
+  io_conf.pin_bit_mask = (1ULL<<HORN_PIN);
+  io_conf.pull_down_en = GPIO_PULLDOWN_ENABLE;
+  io_conf.pull_up_en = GPIO_PULLUP_DISABLE;
+
+  gpio_config(&io_conf);
+  gpio_set_level(HORN_PIN, 0);
+
   // ===== MAIN LOOP =====
   while (true) {
 
@@ -146,6 +157,13 @@ extern "C" void app_main(void)
       rightMotor.setSpeed(0);
 
       logger.warn("Drive DISABLED | Remote Connection: {} | Remote stop enabled: {} | Stick Zeroed: {}", !failsafe, remote_stop, drive == 0.0 && rot == 0.0);
+    }
+
+    // Horn trigger
+    if (rc_channels[5] > 1000) {
+      gpio_set_level(HORN_PIN, 1);
+    } else {
+      gpio_set_level(HORN_PIN, 0);
     }
 
     std::this_thread::sleep_for(10ms);
